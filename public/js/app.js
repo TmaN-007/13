@@ -1,6 +1,7 @@
 import { analyze, canBeat, describe, legalPlays, isBomb, rankOf, TWO, label } from '/shared/rules.js';
 import { cardEl, backEl, cardTag } from './cards.js';
 import { sfx, isMuted, toggleMute } from './sound.js';
+import { updateGuide, setGuide, toggleGuide, guideOpen } from './guide.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -220,7 +221,7 @@ function renderLobby() {
       p.id === S.hostId && '<span class="tag host">Host</span>',
       p.id === S.me && '<span class="tag you">You</span>',
       p.isBot && '<span class="tag">Bot</span>',
-      !p.isBot && !p.connected && '<span class="tag off">Away</span>',
+      p.left ? '<span class="tag off">Left</span>' : !p.isBot && !p.connected && '<span class="tag off">Away</span>',
     ].filter(Boolean).join('');
     cells.push(`<div class="seat-card ${p.id === S.me ? 'me' : ''}">${avatar(p)}
       <div class="who"><div class="nm">${esc(p.name)}</div><div class="meta">${tags}</div></div>
@@ -244,7 +245,7 @@ function renderLobby() {
   $$('button[data-k]', list).forEach((b) => (b.onclick = () => emit('settings', { [b.dataset.k]: Number(b.dataset.v) })));
 
   // start
-  const n = S.players.length;
+  const n = S.players.filter((p) => !p.left).length;
   const start = $('#startBtn');
   const midHand = S.game && S.game.phase !== 'over';
   start.hidden = !isHost;
@@ -282,6 +283,7 @@ function renderTable(prev, fx, origins) {
   renderMe(fx);
   renderFeeds();
   renderResults();
+  updateGuide(g.hand, g.trick.plays.at(-1)?.combo);
 }
 
 function seatStatus(id) {
@@ -640,9 +642,13 @@ $('#playBtn').onclick = doPlay;
 $('#passBtn').onclick = doPass;
 $('#hintBtn').onclick = doHint;
 $('#clearBtn').onclick = clearSel;
+$('#guideHandle').onclick = toggleGuide;
+$('#guideClose').onclick = () => setGuide(false);
 
 document.addEventListener('keydown', (e) => {
   if (currentScreen() !== 'table' || e.target.closest('input, textarea')) return;
+  if (e.key === 'Tab') { e.preventDefault(); toggleGuide(); return; }
+  if (e.key === 'Escape' && guideOpen()) { setGuide(false); return; }
   if (e.key === 'Enter') { e.preventDefault(); doPlay(); }
   else if (e.key === 'p' || e.key === 'P') doPass();
   else if (e.key === 'h' || e.key === 'H') doHint();
@@ -693,6 +699,9 @@ function handleFx(prev, fx) {
         toast(`${f.id === S.me ? 'You are' : `${esc(nameOf(f.id))} is`} out — <b>${ordinal(f.place)}</b>`, '', 2600);
         break;
       case 'frozen': toast(`${f.id === S.me ? "You're" : `${esc(nameOf(f.id))} is`} frozen — <b>cóng!</b>`, 'err', 3000); break;
+      case 'forfeit':
+        toast(f.id === S.me ? 'Everyone else left — <b>you win the hand!</b>' : `Everyone else left — <b>${esc(nameOf(f.id))}</b> wins.`, '', 4000);
+        break;
       case 'instant': toast(`<b>${esc(nameOf(f.id))}</b> wins on the deal — ${esc(f.reason)}!`, '', 4000); break;
       case 'tributeAsk':
         if (f.to === S.me) toast(`${esc(nameOf(f.from))} owes you tribute.`);
@@ -764,10 +773,10 @@ function renderResults() {
   const winner = r.placings[0];
   $('#resultsEyebrow').textContent = `Hand #${g.handNo}`;
   $('#resultsTitle').textContent = winner === S.me ? 'You win the hand!' : `${nameOf(winner)} wins the hand`;
-  $('#resultsSub').textContent = r.instant ? `Instant win — ${r.instant.reason}.` : g.frozen.length ? `${g.frozen.map(nameOf).join(', ')} got frozen.` : '';
+  $('#resultsSub').textContent = r.forfeit ? 'Everyone else left the table — win by default.' : r.instant ? `Instant win — ${r.instant.reason}.` : g.frozen.length ? `${g.frozen.map(nameOf).join(', ')} got frozen.` : '';
   $('#placings').innerHTML = r.placings.map((id, i) => {
     const p = player(id) || { id, name: '—', score: 0 };
-    const left = r.leftovers?.[id] || [];
+    const left = i === 0 ? [] : r.leftovers?.[id] || [];
     return `<li style="animation-delay:${i * 80}ms"><span class="medal">${ordinal(i + 1)}</span>${avatar(p)}
       <span class="nm">${esc(id === S.me ? `${p.name} (you)` : p.name)}<small>total ${fmtPts(p.score)}</small></span>
       <span class="left">${left.map((c) => cardEl(c).outerHTML).join('')}</span>
@@ -781,8 +790,10 @@ function renderResults() {
 function renderResultButtons() {
   const isHost = S.hostId === S.me;
   $('#nextHandBtn').hidden = !isHost;
-  $('#nextHandBtn').disabled = S.players.length < 2;
+  const seated = S.players.filter((p) => !p.left).length;
+  $('#nextHandBtn').disabled = seated < 2;
   $('#resultsWait').textContent = isHost ? '' : `Waiting for ${player(S.hostId)?.name ?? 'the host'} to deal the next hand…`;
+  if (isHost && seated < 2) $('#resultsWait').textContent = 'Everyone else left — invite someone or add a bot from Table settings.';
 }
 
 $('#nextHandBtn').onclick = () => emit('start');

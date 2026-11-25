@@ -177,6 +177,27 @@
         </div>
       </aside>
     </div>
+
+    <!-- Hand guide: slides in from the left (Tab) -->
+    <button class="guide-handle" id="guideHandle" aria-controls="guide" aria-expanded="false" title="Hand guide (Tab)">
+      <span>Hands</span><kbd>Tab</kbd>
+    </button>
+    <aside class="guide" id="guide" aria-hidden="true" aria-label="Hand guide">
+      <header class="guide-head">
+        <div>
+          <p class="eyebrow">Hand guide</p>
+          <h3>Strongest to weakest</h3>
+        </div>
+        <button class="modal-x" id="guideClose" title="Close (Tab)">&times;</button>
+      </header>
+      <p class="guide-note">You can only beat a play with the <b>same kind</b> of play, but higher. The exceptions are the <span class="bomb-word">bombs</span> (1–3), which can chop 2s.</p>
+      <ol class="guide-list" id="guideList"></ol>
+      <footer class="guide-foot">
+        <div><span class="muted small">Card order</span><p class="rank-row">3 4 5 6 7 8 9 10 J Q K A <b>2</b></p></div>
+        <div><span class="muted small">Suits, low → high</span>
+          <p class="suit-order"><svg><use href="#suit-0"/></svg><svg><use href="#suit-1"/></svg><svg class="red"><use href="#suit-2"/></svg><svg class="red"><use href="#suit-3"/></svg></p></div>
+      </footer>
+    </aside>
   </section>
 
   <!-- ================= MODALS ================= -->
@@ -234,7 +255,7 @@
         <h4>Scoring</h4>
         <p>With 4 players: 1st +3, 2nd +1, 3rd −1, 4th −3 (3 players: +2 / 0 / −2, 2 players: ±1). Penalties are paid on top.</p>
         <h4>Shortcuts</h4>
-        <p class="muted"><kbd>Enter</kbd> play · <kbd>P</kbd> pass · <kbd>H</kbd> hint · <kbd>Esc</kbd> clear · drag across cards to select several</p>
+        <p class="muted"><kbd>Enter</kbd> play · <kbd>P</kbd> pass · <kbd>H</kbd> hint · <kbd>Tab</kbd> hand guide · <kbd>Esc</kbd> clear · drag across cards to select several</p>
       </div>
     </div>
   </div>

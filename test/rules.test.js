@@ -111,3 +111,39 @@ test('first lead must include lowest card; tribute moves best card', () => {
   assert.ok(g2.hands.d.includes(back));
   assert.equal(g2.turn, 'a', 'winner leads');
 });
+
+test('last player at the table wins when everyone else leaves', async () => {
+  const { Room } = await import('../server/room.js');
+  const room = new Room('TEST', () => {});
+  room.settings.instantWin = false;
+  room.settings.tribute = false;
+  room.settings.turnSeconds = 0;
+  const a = room.join('ta', 'A').player;
+  const b = room.join('tb', 'B').player;
+  const c = room.join('tc', 'C').player;
+  assert.equal(room.start(), null);
+  room.removePlayer(b.id);
+  assert.equal(room.game.phase, 'playing', 'two players still seated: keep playing');
+  room.removePlayer(a.id);
+  assert.equal(room.game.phase, 'over');
+  assert.equal(room.game.result.placings[0], c.id);
+  assert.equal(room.game.result.forfeit, c.id);
+  assert.equal(room.lastWinner, c.id);
+  assert.ok(room.scores[c.id] > 0);
+  assert.equal(room.hostId, c.id, 'host passes to whoever stays');
+  room.destroy();
+});
+
+test('bots keep the hand alive when humans leave', async () => {
+  const { Room } = await import('../server/room.js');
+  const room = new Room('TES2', () => {});
+  room.settings.instantWin = false;
+  room.settings.turnSeconds = 0;
+  const a = room.join('ta', 'A').player;
+  const b = room.join('tb', 'B').player;
+  room.addBot();
+  room.start();
+  room.removePlayer(b.id);
+  assert.notEqual(room.game.phase, 'over', 'A and the bot are still playing');
+  room.destroy();
+});

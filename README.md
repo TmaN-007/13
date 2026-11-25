@@ -52,9 +52,14 @@ House rules (the host toggles them in the lobby):
 - **Chop penalties**: getting chopped costs 1 per black 2, 2 per red 2, 3 / 4 / 6 for bombs, and chopping a chop stacks.
 - **Stuck pigs (thối heo)**: finish last holding 2s and you pay for them.
 - **Frozen (cóng)**: if someone goes out before you've played a card, you finish last and pay 2.
+- **Last one standing**: if everyone else leaves mid-hand, the last player at the table wins it. Leaving means clicking Leave, getting kicked, or being disconnected for 60 seconds (time to refresh or reconnect). Bots count as players, so a hand with bots keeps going.
 - **Turn timer**: off / 15 / 30 / 45 seconds. When it runs out you pass automatically.
 
 Scoring is zero-sum. Placement points: 4 players +3 / +1 / −1 / −3, 3 players +2 / 0 / −2, 2 players ±1.
+
+## Controls
+
+`Enter` play · `P` pass · `H` hint · `Tab` hand guide (every play ranked strongest to weakest, marking what you hold and what's on the table) · `Esc` clear selection. You can also drag across cards to select several.
 
 ## Code layout
 
