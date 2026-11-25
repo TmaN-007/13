@@ -108,7 +108,6 @@ io.on('connection', (socket) => {
   };
   socket.on('play', act('play'));
   socket.on('pass', act('pass'));
-  socket.on('tribute', act('tribute'));
 
   socket.on('chat', (text) => room && me && room.addChat(me.id, text));
 

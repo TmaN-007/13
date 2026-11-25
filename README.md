@@ -47,7 +47,7 @@ Free tiers that sleep when idle take a few seconds to wake up for the first visi
 | Chops (chặt heo) | single 2 ← quad / 3 consecutive pairs · pair of 2s ← quad / 4 consecutive pairs · 3 consecutive pairs ← quad / 4 consecutive pairs · quad ← 4 consecutive pairs |
 
 House rules (the host toggles them in the lobby):
-- **Tribute (cống)**: last place gives their highest card to the winner; the winner gives back any card they pick.
+- **Tribute (cống)**: after the deal, last hand's loser must give the winner their highest 2, and the loser then leads. No 2 to give means nothing changes hands and the winner leads. (No card is given back, so the loser plays with 12 cards and the winner with 14.)
 - **Instant win (tới trắng)**: dealt four 2s, a dragon (3–A), six pairs, or five consecutive pairs.
 - **Chop penalties**: getting chopped costs 1 per black 2, 2 per red 2, 3 / 4 / 6 for bombs, and chopping a chop stacks.
 - **Stuck pigs (thối heo)**: finish last holding 2s and you pay for them.
