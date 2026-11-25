@@ -1,6 +1,7 @@
 import { analyze, canBeat, describe, legalPlays, isBomb, rankOf, TWO, label } from '/shared/rules.js';
 import { cardEl, backEl, cardTag } from './cards.js';
 import { sfx, isMuted, toggleMute } from './sound.js';
+import { updateGuide, setGuide, toggleGuide, guideOpen } from './guide.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -282,6 +283,7 @@ function renderTable(prev, fx, origins) {
   renderMe(fx);
   renderFeeds();
   renderResults();
+  updateGuide(g.hand, g.trick.plays.at(-1)?.combo);
 }
 
 function seatStatus(id) {
@@ -640,9 +642,13 @@ $('#playBtn').onclick = doPlay;
 $('#passBtn').onclick = doPass;
 $('#hintBtn').onclick = doHint;
 $('#clearBtn').onclick = clearSel;
+$('#guideHandle').onclick = toggleGuide;
+$('#guideClose').onclick = () => setGuide(false);
 
 document.addEventListener('keydown', (e) => {
   if (currentScreen() !== 'table' || e.target.closest('input, textarea')) return;
+  if (e.key === 'Tab') { e.preventDefault(); toggleGuide(); return; }
+  if (e.key === 'Escape' && guideOpen()) { setGuide(false); return; }
   if (e.key === 'Enter') { e.preventDefault(); doPlay(); }
   else if (e.key === 'p' || e.key === 'P') doPass();
   else if (e.key === 'h' || e.key === 'H') doHint();

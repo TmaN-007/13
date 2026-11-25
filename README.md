@@ -57,6 +57,10 @@ House rules (the host toggles them in the lobby):
 
 Scoring is zero-sum. Placement points: 4 players +3 / +1 / −1 / −3, 3 players +2 / 0 / −2, 2 players ±1.
 
+## Controls
+
+`Enter` play · `P` pass · `H` hint · `Tab` hand guide (every play ranked strongest to weakest, marking what you hold and what's on the table) · `Esc` clear selection. You can also drag across cards to select several.
+
 ## Code layout
 
 ```
