@@ -4,6 +4,7 @@ import { chooseMove } from './bot.js';
 const BOT_NAMES = ['Bà Tư', 'Chú Sáu', 'Cô Ba', 'Anh Hai', 'Ông Năm', 'Dì Bảy'];
 const MAX_PLAYERS = 4;
 const AWAY_SECONDS = 20; // turn length for disconnected players when no timer is set
+const LEAVE_GRACE_MS = Number(process.env.LEAVE_GRACE_MS) || 60_000; // disconnected this long mid-hand = left
 
 let nextId = 1;
 const uid = (p) => `${p}${(nextId++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -72,8 +73,17 @@ export class Room {
       // Mid-hand: keep the seat but let the house play it out.
       p.left = true;
       p.connected = false;
-      this.addLog(`${p.name} left — the house will play their hand.`);
       if (this.hostId === id) this.passHost(id);
+      const staying = this.game.order.filter((pid) => !this.player(pid)?.left);
+      if (staying.length === 1) {
+        this.addLog(`${p.name} left the table.`);
+        const fx = this.game.endByForfeit(staying[0]);
+        for (const f of fx) this.describeFx(f);
+        this.afterHand(this.game.result);
+        this.commit(fx);
+        return;
+      }
+      this.addLog(`${p.name} left — the house will play their hand.`);
       this.schedule();
       return;
     }
@@ -81,6 +91,25 @@ export class Room {
     delete this.scores[id];
     if (!p.isBot) this.addLog(`${p.name} left the table.`);
     if (this.hostId === id) this.passHost(id);
+  }
+
+  /**
+   * A player's last connection dropped. Mid-hand they get a grace period to come back
+   * (refresh, flaky Wi-Fi); after that they count as having left the table.
+   */
+  markAway(id) {
+    const p = this.player(id);
+    if (!p || p.isBot) return;
+    clearTimeout(p.awayTimer);
+    p.awayTimer = setTimeout(() => {
+      const g = this.game;
+      if (p.connected || !this.players.includes(p) || p.left) return;
+      if (!g || g.phase === 'over' || !g.order.includes(id)) return;
+      this.addLog(`${p.name} didn't come back.`);
+      this.removePlayer(id);
+      this.commit();
+    }, LEAVE_GRACE_MS);
+    p.awayTimer.unref?.();
   }
 
   passHost(fromId) {
@@ -119,6 +148,7 @@ export class Room {
       prevLoser: isNewTable ? null : this.lastLoser,
     });
     this.addLog(`Hand #${this.handNo} dealt.`);
+    for (const p of this.humans) if (!p.connected) this.markAway(p.id);
     const fx = [{ type: 'deal', handNo: this.handNo }];
     if (this.game.phase === 'tribute') {
       const t = this.game.tribute;
@@ -156,6 +186,7 @@ export class Room {
     if (f.type === 'out') this.addLog(`${n(f.id)} is out — ${ordinal(f.place)} place.`, 'good');
     if (f.type === 'frozen') this.addLog(`${n(f.id)} is frozen (cóng) — never played a card.`, 'bad');
     if (f.type === 'instant') this.addLog(`${n(f.id)} wins instantly: ${f.reason}!`, 'good');
+    if (f.type === 'forfeit') this.addLog(`Everyone else left — ${n(f.id)} wins the hand by default.`, 'good');
     if (f.type === 'tribute') this.addLog(`${n(f.to)} handed a card back to ${n(f.from)}.`);
   }
 
@@ -243,7 +274,10 @@ export class Room {
     };
   }
 
-  destroy() { clearTimeout(this.timer); }
+  destroy() {
+    clearTimeout(this.timer);
+    for (const p of this.players) clearTimeout(p.awayTimer);
+  }
 }
 
 function ordinal(n) {

@@ -60,7 +60,10 @@ io.on('connection', (socket) => {
   const detach = () => {
     if (!room || !me) return;
     me.sockets?.delete(socket.id);
-    if (!me.sockets?.size) me.connected = false;
+    if (!me.sockets?.size) {
+      me.connected = false;
+      room.markAway(me.id);
+    }
     room.commit();
   };
 

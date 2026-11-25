@@ -235,6 +235,26 @@ export class Game {
     return [{ type: 'over', placings }];
   }
 
+  /**
+   * Everyone else left mid-hand: the last player standing wins it outright.
+   * Players who had already gone out keep their order behind the winner.
+   */
+  endByForfeit(winner) {
+    const before = this.finished.filter((id) => id !== winner);
+    const rest = this.order.filter((id) => id !== winner && !before.includes(id));
+    this.finished = [winner, ...before, ...rest];
+    this.frozen = [];
+    const pts = placementPoints(this.finished.length);
+    this.finished.forEach((id, i) => { this.delta[id] += pts[i]; });
+    this.phase = 'over';
+    this.turn = null;
+    this.result = {
+      placings: this.finished, frozen: [], forfeit: winner,
+      delta: this.delta, ledger: this.ledger, leftovers: { ...this.hands },
+    };
+    return [{ type: 'forfeit', id: winner }, { type: 'over', placings: this.finished }];
+  }
+
   /** Auto move on timeout / for absent players: pass if possible, else lead the lowest card. */
   autoMove(id) {
     if (this.phase === 'tribute' && id === this.tribute?.to) return this.returnTribute(id, this.hands[id][0]);
