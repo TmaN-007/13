@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Thirteen — Tiến Lên with friends</title>
+  <meta name="description" content="Play Tiến Lên (Vietnamese Thirteen) with your friends. Host a table, share the code, deal." />
+  <meta name="theme-color" content="#120e0a" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Suit glyphs as vector symbols so they render identically everywhere (no emoji fallback). -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="suit-0" viewBox="0 0 24 24"><path d="M12 1.8C9.2 6.1 3.4 9.3 3.4 14a4.4 4.4 0 0 0 7.6 3.1c-.3 2.1-1.3 3.6-2.8 4.9h7.6c-1.5-1.3-2.5-2.8-2.8-4.9A4.4 4.4 0 0 0 20.6 14c0-4.7-5.8-7.9-8.6-12.2z"/></symbol>
+    <symbol id="suit-1" viewBox="0 0 24 24"><path d="M12 2.2a4.5 4.5 0 0 0-3.7 7.1 4.5 4.5 0 1 0 2.6 7c-.3 2.3-1.3 4-2.7 5.7h7.6c-1.4-1.7-2.4-3.4-2.7-5.7a4.5 4.5 0 1 0 2.6-7A4.5 4.5 0 0 0 12 2.2z"/></symbol>
+    <symbol id="suit-2" viewBox="0 0 24 24"><path d="M12 1.5c2.4 4 5.2 7.3 8.4 10.5-3.2 3.2-6 6.5-8.4 10.5-2.4-4-5.2-7.3-8.4-10.5C6.8 8.8 9.6 5.5 12 1.5z"/></symbol>
+    <symbol id="suit-3" viewBox="0 0 24 24"><path d="M12 21.6S2.6 15.8 2.6 9.3A5.2 5.2 0 0 1 12 6.2a5.2 5.2 0 0 1 9.4 3.1c0 6.5-9.4 12.3-9.4 12.3z"/></symbol>
+  </svg>
+
+  <!-- ================= HOME ================= -->
+  <section id="home" class="screen">
+    <div class="home-grain"></div>
+    <div class="home-inner">
+      <div class="brand">
+        <div class="brand-fan" aria-hidden="true" id="brandFan"></div>
+        <h1 class="wordmark">Thirteen</h1>
+        <p class="tagline"><span lang="vi">Tiến Lên Miền Nam</span> · a card table for you and your friends</p>
+      </div>
+
+      <form class="home-card" id="homeForm" autocomplete="off">
+        <label class="field">
+          <span>Your name</span>
+          <input id="nameInput" maxlength="16" placeholder="What do they call you?" required />
+        </label>
+
+        <div class="home-actions">
+          <button type="button" class="btn btn-brass btn-lg" id="hostBtn">
+            <span>Host a table</span>
+            <small>You get a code to share</small>
+          </button>
+          <div class="or"><span>or join one</span></div>
+          <div class="join-row">
+            <input id="codeInput" class="code-input" maxlength="4" placeholder="CODE" spellcheck="false" autocapitalize="characters" />
+            <button type="submit" class="btn btn-ghost" id="joinBtn">Join</button>
+          </div>
+        </div>
+        <p class="form-error" id="homeError" role="alert"></p>
+      </form>
+
+      <nav class="home-links">
+        <button class="link" data-open="rulesModal">How to play</button>
+        <span>·</span>
+        <span class="muted">2–4 players · no sign-up</span>
+      </nav>
+    </div>
+  </section>
+
+  <!-- ================= LOBBY ================= -->
+  <section id="lobby" class="screen" hidden>
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="mini-mark">13</span>
+        <span class="crumb">Table</span>
+        <button class="code-chip" id="lobbyCode" title="Copy invite link"></button>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" data-open="rulesModal" title="How to play">?</button>
+        <button class="btn btn-ghost btn-sm" data-action="leave">Leave</button>
+      </div>
+    </header>
+
+    <div class="lobby-wrap">
+      <div class="lobby-main">
+        <div class="invite">
+          <div>
+            <p class="eyebrow">Invite your friends</p>
+            <h2 class="invite-code" id="inviteCode">----</h2>
+            <p class="muted" id="inviteHint">Share the code, or send them the link.</p>
+          </div>
+          <div class="invite-actions">
+            <button class="btn btn-brass" id="copyLink">Copy invite link</button>
+            <button class="btn btn-ghost" id="copyCode">Copy code</button>
+          </div>
+        </div>
+
+        <div class="seats" id="lobbySeats"></div>
+
+        <div class="lobby-start">
+          <button class="btn btn-brass btn-lg" id="startBtn">Deal the cards</button>
+          <p class="muted" id="startHint"></p>
+        </div>
+      </div>
+
+      <aside class="lobby-side">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>House rules</h3>
+            <span class="muted small" id="rulesOwner"></span>
+          </div>
+          <div id="settingsList" class="settings"></div>
+        </div>
+        <div class="panel" id="lobbyScores" hidden>
+          <div class="panel-head"><h3>Standings</h3></div>
+          <ol class="standings" id="lobbyStandings"></ol>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= TABLE ================= -->
+  <section id="table" class="screen" hidden>
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="mini-mark">13</span>
+        <span class="crumb" id="handLabel">Hand #1</span>
+        <button class="code-chip" id="tableCode" title="Copy invite link"></button>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" id="soundBtn" title="Sound on/off"></button>
+        <button class="icon-btn" data-open="rulesModal" title="How to play">?</button>
+        <button class="icon-btn side-toggle" id="sideToggle" title="Scores &amp; chat">☰<i class="dot" id="chatDot" hidden></i></button>
+        <button class="btn btn-ghost btn-sm" data-action="leave">Leave</button>
+      </div>
+    </header>
+
+    <div class="table-wrap">
+      <main class="felt-area">
+        <div class="felt" id="felt">
+          <div class="felt-rim"></div>
+          <div class="felt-logo" aria-hidden="true">THIRTEEN</div>
+          <div id="seats"></div>
+          <div class="pile" id="pile"></div>
+          <div class="center-note" id="centerNote"></div>
+          <div class="stamp" id="stamp"></div>
+        </div>
+
+        <div class="me" id="me">
+          <div class="me-bar">
+            <div class="me-id" id="meId"></div>
+            <div class="status-line" id="statusLine"></div>
+            <div class="timer-bar" id="timerBar"><i></i></div>
+          </div>
+          <div class="hand" id="hand"></div>
+          <div class="actions">
+            <div class="actions-left">
+              <button class="btn btn-ghost btn-sm" id="hintBtn" title="Suggest a play (H)">Hint</button>
+              <button class="btn btn-ghost btn-sm" id="clearBtn" title="Clear selection (Esc)">Clear</button>
+            </div>
+            <div class="actions-right">
+              <button class="btn btn-ghost" id="passBtn" title="Pass (P)">Pass</button>
+              <button class="btn btn-brass" id="playBtn" title="Play (Enter)"><span>Play</span><small id="playLabel"></small></button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <aside class="side" id="side">
+        <div class="panel">
+          <div class="panel-head"><h3>Standings</h3><span class="muted small" id="sideHand"></span></div>
+          <ol class="standings" id="standings"></ol>
+        </div>
+        <div class="panel grow">
+          <div class="tabs">
+            <button class="tab active" data-tab="log">Table talk</button>
+            <button class="tab" data-tab="chat">Chat</button>
+          </div>
+          <ul class="feed" id="logFeed"></ul>
+          <ul class="feed" id="chatFeed" hidden></ul>
+          <form class="chat-form" id="chatForm" hidden>
+            <input id="chatInput" maxlength="200" placeholder="Talk trash…" autocomplete="off" />
+            <button class="btn btn-ghost btn-sm">Send</button>
+          </form>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= MODALS ================= -->
+  <div class="modal" id="resultsModal" hidden>
+    <div class="modal-card results">
+      <p class="eyebrow" id="resultsEyebrow">Hand over</p>
+      <h2 id="resultsTitle"></h2>
+      <p class="muted" id="resultsSub"></p>
+      <ol class="placings" id="placings"></ol>
+      <ul class="ledger" id="ledger"></ul>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="toLobbyBtn">Table settings</button>
+        <button class="btn btn-brass" id="nextHandBtn">Deal next hand</button>
+      </div>
+      <p class="muted small center" id="resultsWait"></p>
+    </div>
+  </div>
+
+  <div class="modal" id="rulesModal" hidden>
+    <div class="modal-card rules">
+      <button class="modal-x" data-close>&times;</button>
+      <p class="eyebrow">How to play</p>
+      <h2>Tiến Lên, the short version</h2>
+      <div class="rules-body">
+        <p><b>Goal:</b> be first to get rid of all 13 of your cards.</p>
+        <h4>Card order</h4>
+        <p class="rank-row">3 · 4 · 5 · 6 · 7 · 8 · 9 · 10 · J · Q · K · A · <b>2</b></p>
+        <p>Ties in rank are broken by suit: <span class="suit-row"><svg><use href="#suit-0"/></svg> spades</span> &lt; <span class="suit-row"><svg><use href="#suit-1"/></svg> clubs</span> &lt; <span class="suit-row red"><svg><use href="#suit-2"/></svg> diamonds</span> &lt; <span class="suit-row red"><svg><use href="#suit-3"/></svg> hearts</span>. So 3♠ is the lowest card in the deck and 2♥ is the highest.</p>
+        <h4>What you can play</h4>
+        <ul>
+          <li><b>Single</b>, <b>pair</b>, <b>triple</b>, <b>four of a kind</b></li>
+          <li><b>Straight</b> — 3+ cards in a row, e.g. 7-8-9 (2s can't be in a straight)</li>
+          <li><b>Consecutive pairs</b> — 3+ pairs in a row, e.g. 55-66-77</li>
+        </ul>
+        <h4>A round</h4>
+        <p>The leader plays anything. Going round, each player must play the <i>same kind and same number</i> of cards, but higher (compare the top card) — or pass. <b>Once you pass, you're out until the round ends.</b> When everyone else has passed, whoever played last clears the pile and leads anything.</p>
+        <h4>Who starts</h4>
+        <p>First hand: whoever holds the lowest card (normally the 3♠) leads, and that card has to be in the opening play. After that, last hand's winner leads.</p>
+        <h4>Chopping the pig (<span lang="vi">chặt heo</span>)</h4>
+        <p>2s (“pigs”) can only be beaten by bombs:</p>
+        <ul>
+          <li>A single 2 ← four of a kind, or 3 consecutive pairs</li>
+          <li>A pair of 2s ← four of a kind, or 4 consecutive pairs</li>
+          <li>3 consecutive pairs ← four of a kind, or 4 consecutive pairs</li>
+          <li>Four of a kind ← 4 consecutive pairs</li>
+        </ul>
+        <p>Get chopped and you pay: 1 point per black 2, 2 per red 2, more for bombs. Chop a chop and the pot stacks.</p>
+        <h4>House rules on this table</h4>
+        <ul>
+          <li><b>Tribute (<span lang="vi">cống</span>):</b> last place hands their highest card to the winner before the next hand; the winner gives back any card they choose.</li>
+          <li><b>Instant win (<span lang="vi">tới trắng</span>):</b> dealt four 2s, a dragon (3 through A), six pairs or five consecutive pairs — you win on the spot.</li>
+          <li><b>Frozen (<span lang="vi">cóng</span>):</b> if someone goes out before you've played a single card, you finish dead last and pay extra.</li>
+          <li><b>Stuck pigs (<span lang="vi">thối heo</span>):</b> finish last holding 2s and you pay for each one.</li>
+        </ul>
+        <h4>Scoring</h4>
+        <p>With 4 players: 1st +3, 2nd +1, 3rd −1, 4th −3 (3 players: +2 / 0 / −2, 2 players: ±1). Penalties are paid on top.</p>
+        <h4>Shortcuts</h4>
+        <p class="muted"><kbd>Enter</kbd> play · <kbd>P</kbd> pass · <kbd>H</kbd> hint · <kbd>Esc</kbd> clear · drag across cards to select several</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

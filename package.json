@@ -1,0 +1,31 @@
+{
+  "name": "thirteen",
+  "version": "0.1.0",
+  "description": "Tiến Lên (Thirteen) — online multiplayer card game for you and your friends",
+  "main": "server/index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TmaN-007/13.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/TmaN-007/13/issues"
+  },
+  "homepage": "https://github.com/TmaN-007/13#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "socket.io": "^4.8.4"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
+}

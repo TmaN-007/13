@@ -1,0 +1,113 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { analyze, canBeat, findInstantWin, legalPlays, isChop, chopValue } from '../shared/rules.js';
+import { Game } from '../server/game.js';
+import { chooseMove } from '../server/bot.js';
+
+// helper: "3s" "10h" "2d" ...
+const R = ['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
+const S = { s: 0, c: 1, d: 2, h: 3 };
+const c = (str) => R.indexOf(str.slice(0, -1)) * 4 + S[str.at(-1)];
+const cs = (str) => str.split(' ').map(c);
+const A = (str) => analyze(cs(str));
+
+test('combination detection', () => {
+  assert.equal(A('3s').type, 'single');
+  assert.equal(A('7s 7h').type, 'pair');
+  assert.equal(A('7s 7h 7d').type, 'triple');
+  assert.equal(A('9s 9h 9d 9c').type, 'quad');
+  assert.equal(A('3s 4h 5d').type, 'straight');
+  assert.equal(A('10s Jh Qd Kc As').type, 'straight');
+  assert.equal(A('Qs Kh Ad 2c'), null, '2 cannot be in a straight');
+  assert.equal(A('3s 4h'), null);
+  assert.equal(A('3s 3h 4d 4c 5s 5h').type, 'pairseq');
+  assert.equal(A('3s 3h 4d 4c 6s 6h'), null);
+  assert.equal(A('Ks Kh As Ac 2s 2h'), null);
+  assert.equal(A('3s 3h 5d'), null);
+});
+
+test('normal beats', () => {
+  assert.ok(canBeat(A('3h'), A('3s')), 'suit breaks ties');
+  assert.ok(!canBeat(A('3s'), A('3h')));
+  assert.ok(canBeat(A('2s'), A('Ah')));
+  assert.ok(canBeat(A('5s 5h'), A('5c 5d')));
+  assert.ok(canBeat(A('4s 5s 6h'), A('4c 5d 6d')));
+  assert.ok(!canBeat(A('4s 5s 6h 7h'), A('4c 5d 6d')), 'lengths must match');
+  assert.ok(!canBeat(A('9s 9h'), A('9s')));
+});
+
+test('chops', () => {
+  const quad = A('4s 4c 4d 4h');
+  const p3 = A('5s 5h 6s 6h 7s 7h');
+  const p4 = A('5s 5h 6s 6h 7s 7h 8s 8h');
+  assert.ok(canBeat(quad, A('2h')));
+  assert.ok(canBeat(p3, A('2h')));
+  assert.ok(canBeat(quad, A('2h 2s')));
+  assert.ok(!canBeat(p3, A('2h 2s')));
+  assert.ok(canBeat(p4, A('2h 2s')));
+  assert.ok(canBeat(quad, p3));
+  assert.ok(canBeat(p4, quad));
+  assert.ok(!canBeat(quad, A('Ah')), 'bombs only chop 2s');
+  assert.ok(isChop(quad, A('2h')));
+  assert.equal(chopValue(cs('2h'), A('2h')), 2);
+  assert.equal(chopValue(cs('2s 2d'), A('2s 2d')), 3);
+});
+
+test('instant wins', () => {
+  assert.equal(findInstantWin(cs('2s 2c 2d 2h 3s 4s 5s 6s 7s 8s 9s 10s Js')), 'Four 2s');
+  assert.equal(findInstantWin(cs('3s 4s 5s 6s 7s 8s 9s 10s Js Qs Ks As 2h')), 'Dragon (3 through A)');
+  assert.equal(findInstantWin(cs('3s 3h 5s 5h 7s 7h 9s 9h Js Jh Ks Kh 2h')), 'Six pairs');
+  assert.equal(findInstantWin(cs('3s 4h 6s 8h 10s Qh Ks 2h 2s 9d 9h Jd Ac')), null);
+});
+
+test('legal plays respect target and required card', () => {
+  const hand = cs('3s 4h 5d 5s 9c');
+  const plays = legalPlays(hand, null, c('3s'));
+  assert.ok(plays.length && plays.every((p) => p.cards.includes(c('3s'))));
+  assert.ok(plays.some((p) => p.combo.type === 'straight'));
+});
+
+function playOut(seed, n = 4, settings = {}) {
+  let s = seed;
+  const rng = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const players = Array.from({ length: n }, (_, i) => ({ id: 'p' + i, name: 'P' + i }));
+  const g = new Game(players, { tribute: false, ...settings }, { rng });
+  let guard = 0;
+  while (g.phase === 'playing' && guard++ < 2000) {
+    const id = g.turn;
+    const move = chooseMove(g, id);
+    const res = move ? g.play(id, move) : g.pass(id);
+    assert.ok(res.ok, res.error);
+  }
+  return g;
+}
+
+test('bots can play full hands to completion, points sum to zero', () => {
+  for (let seed = 1; seed <= 300; seed++) {
+    const n = 2 + (seed % 3);
+    const g = playOut(seed, n);
+    assert.equal(g.phase, 'over', `seed ${seed} did not finish`);
+    assert.equal(new Set(g.result.placings).size, n);
+    const sum = Object.values(g.result.delta).reduce((a, b) => a + b, 0);
+    assert.equal(sum, 0, 'zero-sum scoring');
+  }
+});
+
+test('first lead must include lowest card; tribute moves best card', () => {
+  const players = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }, { id: 'd', name: 'D' }];
+  const g = new Game(players, { instantWin: false });
+  assert.equal(g.hands[g.turn][0], 0, '3♠ holder leads with 4 players');
+  const other = g.hands[g.turn].find((x) => x !== 0);
+  assert.equal(g.play(g.turn, [other]).ok, false);
+
+  const g2 = new Game(players, { tribute: true, instantWin: false }, { handNo: 2, prevWinner: 'a', prevLoser: 'd' });
+  assert.equal(g2.phase, 'tribute');
+  assert.equal(g2.hands.a.length, 14);
+  assert.equal(g2.hands.d.length, 12);
+  assert.ok(g2.hands.a.includes(g2.tribute.given));
+  const back = g2.hands.a[0];
+  assert.ok(g2.returnTribute('a', back).ok);
+  assert.equal(g2.hands.a.length, 13);
+  assert.ok(g2.hands.d.includes(back));
+  assert.equal(g2.turn, 'a', 'winner leads');
+});
