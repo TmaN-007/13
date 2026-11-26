@@ -1,6 +1,6 @@
 import { Game, DEFAULT_SETTINGS } from './game.js';
 import { chooseMove } from './bot.js';
-import { label } from '../shared/rules.js';
+import { label, rankOf } from '../shared/rules.js';
 
 const BOT_NAMES = ['Bà Tư', 'Chú Sáu', 'Cô Ba', 'Anh Hai', 'Ông Năm', 'Dì Bảy'];
 const MAX_PLAYERS = 4;
@@ -151,7 +151,9 @@ export class Room {
     this.addLog(`Hand #${this.handNo} dealt.`);
     for (const p of this.humans) if (!p.connected) this.markAway(p.id);
     const fx = [{ type: 'deal', handNo: this.handNo }];
-    for (const f of this.game.openingFx || []) { if (f.type === 'tribute') { this.describeFx(f); fx.push(f); } }
+    for (const f of this.game.openingFx || []) {
+      if (f.type === 'tribute' || f.type === 'tributeAsk') { this.describeFx(f); fx.push(f); }
+    }
     if (this.game.phase === 'over') {
       this.afterHand(this.game.result);
       fx.push({ type: 'instant', id: this.game.result.instant.id, reason: this.game.result.instant.reason });
@@ -168,6 +170,7 @@ export class Room {
     let res;
     if (action === 'play') res = g.play(id, payload);
     else if (action === 'pass') res = g.pass(id);
+    else if (action === 'tribute') res = g.returnTribute(id, payload);
     else if (action === 'auto') res = g.autoMove(id);
     if (!res?.ok) return res?.error || 'Not allowed.';
     for (const f of res.fx) this.describeFx(f);
@@ -184,9 +187,10 @@ export class Room {
     if (f.type === 'frozen') this.addLog(`${n(f.id)} is frozen (cóng) — never played a card.`, 'bad');
     if (f.type === 'instant') this.addLog(`${n(f.id)} wins instantly: ${f.reason}!`, 'good');
     if (f.type === 'forfeit') this.addLog(`Everyone else left — ${n(f.id)} wins the hand by default.`, 'good');
+    if (f.type === 'tributeAsk') this.addLog(`${n(f.from)} paid ${n(f.to)} their ${label(f.given)}. ${n(f.to)} picks a card to give back.`);
     if (f.type === 'tribute') {
       this.addLog(f.given != null
-        ? `${n(f.from)} paid ${n(f.to)} their ${label(f.given)} — ${n(f.from)} leads.`
+        ? `${n(f.to)} gave ${n(f.from)} a card back — ${n(f.from)} leads.`
         : `${n(f.from)} had no 2 to pay — ${n(f.to)} leads.`);
     }
   }
@@ -212,7 +216,7 @@ export class Room {
     this.deadline = null;
     const g = this.game;
     if (!g || g.phase === 'over') return;
-    const actor = g.turn;
+    const actor = g.phase === 'tribute' ? g.tribute.to : g.turn;
     const p = this.player(actor);
     if (!p) return;
     if (p.isBot || p.left) {
@@ -222,7 +226,7 @@ export class Room {
     }
     const secs = this.settings.turnSeconds || (p.connected ? 0 : AWAY_SECONDS);
     if (!secs) return;
-    const ms = secs * 1000;
+    const ms = (g.phase === 'tribute' ? Math.max(secs, 20) : secs) * 1000;
     this.deadline = Date.now() + ms;
     this.timer = setTimeout(() => this.act(actor, 'auto'), ms);
   }
@@ -230,6 +234,13 @@ export class Room {
   botMove(id) {
     const g = this.game;
     if (!g) return;
+    if (g.phase === 'tribute') {
+      // Give back the lowest card that isn't part of a pair or better.
+      const h = g.hands[id];
+      const lone = h.find((c) => h.filter((x) => rankOf(x) === rankOf(c)).length === 1) ?? h[0];
+      this.act(id, 'tribute', lone);
+      return;
+    }
     if (g.turn !== id) return;
     const move = chooseMove(g, id);
     const err = move ? this.act(id, 'play', move) : this.act(id, 'pass');
