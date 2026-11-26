@@ -101,26 +101,35 @@ test('first lead must include lowest card', () => {
   assert.equal(g.play(g.turn, [other]).ok, false);
 });
 
-test('tribute: loser pays their highest 2 and leads; no 2 means the winner leads', () => {
+test('tribute: loser pays highest 2, winner gives any card back, loser leads; no 2 = winner leads', () => {
   const players = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }, { id: 'd', name: 'D' }];
   let paid = 0, unpaid = 0;
   for (let seed = 1; seed <= 200; seed++) {
     let x = seed;
     const rng = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648);
     const g = new Game(players, { tribute: true, instantWin: false }, { handNo: 2, prevWinner: 'a', prevLoser: 'd', rng });
-    assert.equal(g.phase, 'playing', 'no waiting phase');
-    assert.equal(g.mustInclude, null);
     const t = g.tribute;
     if (t.given != null) {
       paid++;
+      assert.equal(g.phase, 'tribute', 'waits for the winner to give a card back');
       assert.equal(rankOf(t.given), 12, 'a 2 is paid');
+      assert.ok(g.hands.d.every((c) => c < t.given || rankOf(c) !== 12), 'it was their highest 2');
       assert.equal(g.hands.a.length, 14);
       assert.equal(g.hands.d.length, 12);
-      assert.ok(g.hands.a.includes(t.given));
-      assert.ok(g.hands.d.every((c) => c < t.given || rankOf(c) !== 12), 'it was their highest 2');
+      assert.equal(g.play('a', [g.hands.a[0]]).ok, false, 'no playing before the give-back');
+      assert.equal(g.returnTribute('d', g.hands.d[0]).ok, false, 'only the winner gives back');
+      const back = g.hands.a[5];
+      assert.ok(g.returnTribute('a', back).ok);
+      assert.equal(g.hands.a.length, 13);
+      assert.equal(g.hands.d.length, 13);
+      assert.ok(g.hands.d.includes(back) && !g.hands.a.includes(back));
+      assert.equal(g.phase, 'playing');
       assert.equal(g.turn, 'd', 'loser leads after paying');
+      assert.equal(g.view('b').tribute.returned, null, 'others do not see the returned card');
+      assert.equal(g.view('d').tribute.returned, back);
     } else {
       unpaid++;
+      assert.equal(g.phase, 'playing');
       assert.ok(g.hands.d.every((c) => rankOf(c) !== 12), 'loser really had no 2');
       assert.equal(g.hands.a.length, 13);
       assert.equal(g.hands.d.length, 13);
@@ -131,6 +140,18 @@ test('tribute: loser pays their highest 2 and leads; no 2 means the winner leads
   const off = new Game(players, { tribute: false, instantWin: false }, { handNo: 2, prevWinner: 'a', prevLoser: 'd' });
   assert.equal(off.tribute, null);
   assert.equal(off.turn, 'a', 'tribute off: winner leads as before');
+});
+
+test('every hand is a fresh 52-card shuffle', () => {
+  const players = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }];
+  const g1 = new Game(players, { instantWin: false });
+  const g2 = new Game(players, { instantWin: false }, { handNo: 2, prevWinner: 'a', prevLoser: 'b' });
+  for (const g of [g1, g2]) {
+    const all = [...g.hands.a, ...g.hands.b];
+    assert.equal(new Set(all).size, all.length, 'no duplicates');
+    assert.equal(all.length, 26);
+  }
+  assert.notEqual(g1.hands.a.join(), g2.hands.a.join());
 });
 
 test('last player at the table wins when everyone else leaves', async () => {

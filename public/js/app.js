@@ -192,7 +192,7 @@ function render(prev, fx, origins) {
 
 // ================================================================= LOBBY
 const SETTINGS = [
-  { k: 'tribute', t: 'Tribute', vi: 'cống', d: 'Last place gives the winner their highest 2 and leads. No 2? The winner leads.' },
+  { k: 'tribute', t: 'Tribute', vi: 'cống', d: 'Last place gives the winner their highest 2, the winner gives any card back, and last place leads. No 2? The winner leads.' },
   { k: 'winnerLeads', t: 'Winner leads', d: 'After hand one, the last winner leads (tribute can hand the lead to the loser). Off: the lowest card always leads.' },
   { k: 'firstLeadLowest', t: 'Open with the lowest card', d: 'Whoever leads with the lowest card (3♠) has to play it.' },
   { k: 'instantWin', t: 'Instant wins', vi: 'tới trắng', d: 'Four 2s, a dragon, six pairs or five consecutive pairs win on the deal.' },
@@ -293,14 +293,15 @@ function seatStatus(id) {
   if (place >= 0 && (g.phase !== 'over' || g.counts[id] === 0)) return `<span class="chip place">${ordinal(place + 1)}</span>`;
   if (g.phase === 'over' && place >= 0) return `<span class="chip">${ordinal(place + 1)}</span>`;
   if (g.trick.passed.includes(id)) return '<span class="chip passed">Passed</span>';
+  if (g.phase === 'tribute' && g.tribute?.to === id) return '<span class="chip" style="color:var(--brass-2)">Choosing…</span>';
   if (g.turn === id) return '<span class="chip" style="color:var(--brass-2)">Thinking…</span>';
   return '';
 }
 
 function ringHTML(id) {
   const g = S.game;
-  if (g.turn !== id || !S.deadline) return '';
-  const total = (S.settings.turnSeconds || 20) * 1000;
+  if (actorOf(g) !== id || !S.deadline) return '';
+  const total = turnTotal(g);
   const left = Math.max(0, S.deadline - now());
   return `<svg class="ring run" viewBox="0 0 48 48" style="--d:${total}"><circle cx="24" cy="24" r="22" style="animation-duration:${total}ms;animation-delay:${left - total}ms"/></svg>`;
 }
@@ -323,7 +324,7 @@ function renderSeats() {
       seatEls.set(id, el);
     }
     const p = player(id) || { id, name: '—' };
-    const actor = g.turn;
+    const actor = actorOf(g);
     const count = g.counts[id];
     el.className = `seat pos-${pos[i]}${actor === id ? ' turn' : ''}${g.finished.includes(id) || g.frozen.includes(id) ? ' done' : ''}`;
     const sub = p.isBot ? 'bot' : p.left ? 'left' : !p.connected ? 'away' : `${fmtPts(p.score)} pts`;
@@ -434,7 +435,9 @@ function renderPile(prev, fx, origins) {
   // center note when the pile is empty
   const note = $('#centerNote');
   let html = '';
-  if (g.phase === 'playing' && !plays.length && !trickEnded) {
+  if (g.phase === 'tribute') {
+    html = tributeNote(g.tribute);
+  } else if (g.phase === 'playing' && !plays.length && !trickEnded) {
     if (g.turn === S.me) html = `<span class="big">Your lead</span>${g.mustInclude != null ? `Open with your ${cardTag(g.mustInclude)}.` : 'Play anything.'}`;
     else html = `<span class="big">${esc(nameOf(g.turn))} leads</span>`;
     if (handJustStarted(g) && g.tribute) html = tributeNote(g.tribute) + html;
@@ -443,9 +446,13 @@ function renderPile(prev, fx, origins) {
   note.hidden = !html;
 }
 
+/** Who the table is waiting on: the winner choosing a card to give back, or whoever's turn it is. */
+const actorOf = (g) => (g.phase === 'tribute' ? g.tribute?.to : g.turn);
+const turnTotal = (g) => (g.phase === 'tribute' ? Math.max(S.settings.turnSeconds || 20, 20) : S.settings.turnSeconds || 20) * 1000;
+
 const handJustStarted = (g) => Object.values(g.played).every((n) => n === 0);
 
-/** Center-table explanation of the tribute at the start of a hand. */
+/** Center-table explanation of the tribute (while it happens, and at the start of the hand). */
 function tributeNote(t) {
   const from = t.from === S.me ? 'You' : esc(nameOf(t.from));
   const to = t.to === S.me ? 'you' : esc(nameOf(t.to));
@@ -453,7 +460,17 @@ function tributeNote(t) {
     return `<span class="tribute-line">${from} had no 2 to pay ${to} — so ${t.to === S.me ? 'you lead' : `${esc(nameOf(t.to))} leads`}.</span>`;
   }
   const their = t.from === S.me ? 'your' : 'their';
-  return `<span class="tribute-line">${from} paid ${to} ${their} highest 2</span><span class="tribute-card">${cardEl(t.given).outerHTML}</span>`;
+  const card = `<span class="tribute-card">${cardEl(t.given).outerHTML}</span>`;
+  if (!t.done) {
+    if (t.to === S.me) return `<span class="big">Tribute!</span><span class="tribute-line">${from} paid you their highest 2</span>${card}<span class="tribute-line"><b>Pick any card from your hand to give back.</b></span>`;
+    if (t.from === S.me) return `<span class="big">Tribute</span><span class="tribute-line">You paid ${esc(nameOf(t.to))} your highest 2</span>${card}<span class="tribute-line">Waiting for a card back — then you lead.</span>`;
+    return `<span class="big">Tribute</span><span class="tribute-line">${from} paid ${to} their highest 2</span>${card}<span class="tribute-line">${esc(nameOf(t.to))} is choosing a card to give back.</span>`;
+  }
+  let back = '';
+  if (t.returned != null && t.from === S.me) back = ` and got back the ${cardTag(t.returned)}`;
+  else if (t.returned != null && t.to === S.me) back = ` — you gave back the ${cardTag(t.returned)}`;
+  else back = ' and got a card back';
+  return `<span class="tribute-line">${from} paid ${to} ${their} highest 2${back}</span>${card}`;
 }
 
 function renderMe(fx) {
@@ -465,6 +482,12 @@ function renderMe(fx) {
   const handBox = $('#hand');
   const hand = g.hand;
   const dealt = fx.some((f) => f.type === 'deal');
+  if (dealt) {
+    // Brand-new hand: drop every old card element so the whole fresh hand deals in.
+    for (const el of handEls.values()) el.remove();
+    handEls.clear();
+    handBox.innerHTML = '';
+  }
   for (const [id, el] of handEls) if (!hand.includes(id)) { el.remove(); handEls.delete(id); selected.delete(id); }
   hand.forEach((c, i) => {
     let el = handEls.get(c);
@@ -480,34 +503,38 @@ function renderMe(fx) {
   for (const [c, el] of handEls) {
     el.classList.toggle('sel', selected.has(c));
     el.classList.toggle('must', g.mustInclude === c && g.turn === S.me);
-    el.classList.toggle('gift', !!tr && tr.to === S.me && tr.given === c && handJustStarted(g));
+    const fresh = g.phase === 'tribute' || handJustStarted(g);
+    el.classList.toggle('gift', !!tr && fresh && ((tr.to === S.me && tr.given === c) || (tr.from === S.me && tr.returned === c)));
     el.classList.toggle('hint', false);
   }
   layoutHand();
 
   const myTurn = g.phase === 'playing' && g.turn === S.me;
-  handBox.classList.toggle('idle', !myTurn);
+  const myTribute = g.phase === 'tribute' && tr?.to === S.me;
+  handBox.classList.toggle('idle', !myTurn && !myTribute);
 
   // ---- status line
   const status = $('#statusLine');
   const target = g.trick.plays.at(-1);
   let txt = '';
   if (g.phase === 'over') txt = 'Hand over.';
+  else if (myTribute) txt = `<b>Pick any card to give back to ${esc(nameOf(tr.from))}.</b>`;
+  else if (g.phase === 'tribute') txt = tr?.from === S.me ? `Waiting for ${esc(nameOf(tr.to))} to give you a card back…` : `${esc(nameOf(tr.to))} is choosing a card to give back…`;
   else if (g.finished.includes(S.me)) txt = `You're out — <b>${ordinal(g.finished.indexOf(S.me) + 1)} place</b>. Watch the rest play out.`;
   else if (g.frozen.includes(S.me)) txt = "You're frozen (cóng) — someone went out before you played.";
   else if (myTurn) txt = target ? `<b>Your turn.</b> Beat ${esc(nameOf(target.by))}'s ${esc(target.label)} — or pass.` : '<b>Your lead.</b> Play anything.';
   else if (g.trick.passed.includes(S.me)) txt = `You passed — waiting for this round to end.`;
   else txt = `Waiting for <b>${esc(nameOf(g.turn))}</b>…`;
   status.innerHTML = txt;
-  status.classList.toggle('mine', myTurn);
+  status.classList.toggle('mine', myTurn || myTribute);
 
   // ---- timer bar
   const bar = $('#timerBar');
-  const mine = myTurn && S.deadline;
+  const mine = (myTurn || myTribute) && S.deadline;
   bar.classList.toggle('on', !!mine);
   const i = bar.querySelector('i');
   if (mine) {
-    const total = (S.settings.turnSeconds || 20) * 1000;
+    const total = turnTotal(g);
     const left = Math.max(0, S.deadline - now());
     const k = `${S.deadline}`;
     if (i.dataset.k !== k) {
@@ -523,7 +550,8 @@ function renderMe(fx) {
 
 function layoutHand() {
   const box = $('#hand');
-  const els = [...handEls.values()];
+  // Lay out in on-screen (sorted) order — not the order the elements happened to be created in.
+  const els = [...box.querySelectorAll(':scope > .card')];
   if (!els.length) return;
   const cw = els[0].offsetWidth || 80;
   const avail = box.clientWidth - 24;
@@ -540,6 +568,16 @@ function updateActions() {
   const passBtn = $('#passBtn');
   const lbl = $('#playLabel');
   const sel = [...selected].sort((a, b) => a - b);
+  if (g.phase === 'tribute' && g.tribute?.to === S.me) {
+    playBtn.firstElementChild.textContent = 'Give back';
+    playBtn.disabled = sel.length !== 1;
+    lbl.innerHTML = sel.length === 1 ? `the ${cardTag(sel[0]).replace('#ff8a7a', '#7a1a12')}` : 'pick one card';
+    passBtn.disabled = true;
+    $('#hintBtn').disabled = true;
+    $('#clearBtn').disabled = !sel.length;
+    return;
+  }
+  playBtn.firstElementChild.textContent = 'Play';
   const myTurn = g.phase === 'playing' && g.turn === S.me;
   const target = g.trick.plays.at(-1);
   passBtn.disabled = !myTurn || !target;
@@ -580,6 +618,8 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => { drag = null; });
 
 function setSel(id, on) {
+  const g = S?.game;
+  if (on && g?.phase === 'tribute' && g.tribute?.to === S.me) selected.clear(); // give back exactly one card
   if (on) selected.add(id); else selected.delete(id);
   for (const [c, el] of handEls) { el.classList.toggle('sel', selected.has(c)); el.classList.remove('hint'); }
   sfx.select();
@@ -596,6 +636,11 @@ async function doPlay() {
   const g = S?.game;
   if (!g || $('#playBtn').disabled) return;
   const cards = [...selected];
+  if (g.phase === 'tribute') {
+    const res = await emit('tribute', cards[0]);
+    if (res.ok) selected.clear();
+    return;
+  }
   const res = await emit('play', cards);
   if (res.ok) { selected.clear(); hints = []; hintIdx = -1; }
 }
@@ -689,14 +734,21 @@ function handleFx(prev, fx) {
         toast(f.id === S.me ? 'Everyone else left — <b>you win the hand!</b>' : `Everyone else left — <b>${esc(nameOf(f.id))}</b> wins.`, '', 4000);
         break;
       case 'instant': toast(`<b>${esc(nameOf(f.id))}</b> wins on the deal — ${esc(f.reason)}!`, '', 4000); break;
-      case 'tribute':
+      case 'tributeAsk':
+        if (f.from === S.me) toast(`You lost last hand — your ${cardTag(f.given)} goes to ${esc(nameOf(f.to))}.`, 'err', 4200);
+        else if (f.to === S.me) toast(`${esc(nameOf(f.from))} paid you their ${cardTag(f.given)}. <b>Pick a card to give back.</b>`, '', 4200);
+        else toast(`${esc(nameOf(f.from))} paid ${esc(nameOf(f.to))} their ${cardTag(f.given)}.`, '', 3500);
+        break;
+      case 'tribute': {
+        const back = S.game?.tribute?.returned;
         if (f.given != null) {
-          if (f.from === S.me) toast(`You lost last hand — your ${cardTag(f.given)} goes to ${esc(nameOf(f.to))}. <b>You lead.</b>`, 'err', 4200);
-          else if (f.to === S.me) toast(`${esc(nameOf(f.from))} paid you their ${cardTag(f.given)} — they lead.`, '', 4200);
-          else toast(`${esc(nameOf(f.from))} paid ${esc(nameOf(f.to))} their ${cardTag(f.given)}.`, '', 3500);
+          if (f.from === S.me) toast(`${esc(nameOf(f.to))} gave you back the ${back != null ? cardTag(back) : 'a card'}. <b>You lead.</b>`, '', 4200);
+          else if (f.to === S.me) toast(`You gave back the ${back != null ? cardTag(back) : 'card'} — ${esc(nameOf(f.from))} leads.`, '', 3500);
+          else toast(`${esc(nameOf(f.to))} gave a card back — ${esc(nameOf(f.from))} leads.`, '', 3500);
         } else if (f.from === S.me) toast(`No 2 to pay — ${esc(nameOf(f.to))} leads.`, '', 3500);
         else if (f.to === S.me) toast(`${esc(nameOf(f.from))} had no 2 to pay — <b>you lead.</b>`, '', 3500);
         break;
+      }
       case 'over':
         if (f.placings[0] === S.me) sfx.win(); else sfx.out();
         break;

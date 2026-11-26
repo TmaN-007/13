@@ -4,7 +4,7 @@ import {
 } from '../shared/rules.js';
 
 export const DEFAULT_SETTINGS = {
-  tribute: true,          // loser gives their highest 2 to the winner and leads; no 2 = winner leads
+  tribute: true,          // loser gives their highest 2 to the winner, winner gives any card back, loser leads; no 2 = winner leads
   winnerLeads: true,      // after hand 1 the previous winner leads; otherwise lowest card leads
   firstLeadLowest: true,  // the opening play of a lowest-card lead must include that card (3♠)
   instantWin: true,       // "tới trắng": four 2s, dragon, six pairs, five consecutive pairs
@@ -49,15 +49,30 @@ export class Game {
     const deck = shuffle(newDeck(), this.rng);
     this.order.forEach((id, i) => { this.hands[id] = sortCards(deck.slice(i * 13, i * 13 + 13)); });
     const s = this.settings;
-    // Tribute (cống): last hand's loser must hand their highest 2 to last hand's winner.
-    // Paid a 2 -> the loser leads. Had no 2 -> the winner leads.
+    // Tribute (cống): last hand's loser must hand their highest 2 to last hand's winner,
+    // who then gives back any card they choose, and the loser leads.
+    // If the loser has no 2, nothing changes hands and the winner leads.
     if (s.tribute && this.prevWinner && this.prevLoser && this.prevWinner !== this.prevLoser) {
       const twos = this.hands[this.prevLoser].filter((c) => rankOf(c) === TWO);
       const given = twos.length ? twos.at(-1) : null;
-      if (given != null) this.move(this.prevLoser, this.prevWinner, given);
-      this.tribute = { from: this.prevLoser, to: this.prevWinner, given };
+      this.tribute = { from: this.prevLoser, to: this.prevWinner, given, returned: null };
+      if (given != null) {
+        this.move(this.prevLoser, this.prevWinner, given);
+        this.phase = 'tribute';     // waiting for the winner to pick a card to give back
+        this.openingFx = [{ type: 'tributeAsk', from: this.prevLoser, to: this.prevWinner, given }];
+        return;
+      }
     }
     this.openingFx = this.begin();
+  }
+
+  /** The winner gives any one card back to the loser; then the hand starts. */
+  returnTribute(id, card) {
+    if (this.phase !== 'tribute' || id !== this.tribute?.to) return { ok: false, error: "You don't owe a card back." };
+    if (!this.hands[id].includes(card)) return { ok: false, error: "You don't have that card." };
+    this.move(id, this.tribute.from, card);
+    this.tribute.returned = card;
+    return { ok: true, fx: this.begin() };
   }
 
   move(from, to, card) {
@@ -82,7 +97,9 @@ export class Game {
       leader = lowestHolder();
       if (this.settings.firstLeadLowest) must = this.hands[leader][0];
     }
-    const fx = this.tribute ? [{ type: 'tribute', ...this.tribute, leader }] : [];
+    const fx = this.tribute
+      ? [{ type: 'tribute', from: this.tribute.from, to: this.tribute.to, given: this.tribute.given, gaveBack: this.tribute.returned != null, leader }]
+      : [];
 
     if (this.settings.instantWin) {
       for (const id of this.order) {
@@ -256,6 +273,7 @@ export class Game {
 
   /** Auto move on timeout / for absent players: pass if possible, else lead the lowest card. */
   autoMove(id) {
+    if (this.phase === 'tribute' && id === this.tribute?.to) return this.returnTribute(id, this.hands[id][0]);
     if (this.phase !== 'playing' || id !== this.turn) return { ok: false };
     if (this.target) return this.pass(id);
     return this.play(id, [this.mustInclude ?? this.hands[id][0]]);
@@ -279,8 +297,15 @@ export class Game {
       },
       finished: this.finished,
       frozen: this.frozen,
-      // The hand-over happens in the open at a real table, so everyone sees which 2 moved.
-      tribute: this.tribute && { ...this.tribute },
+      // Everyone sees which 2 moved (it's handed over in the open); only the two players
+      // involved see which card came back.
+      tribute: this.tribute && {
+        from: this.tribute.from,
+        to: this.tribute.to,
+        given: this.tribute.given,
+        returned: this.tribute.from === viewer || this.tribute.to === viewer ? this.tribute.returned : null,
+        done: this.tribute.given == null || this.tribute.returned != null,
+      },
       delta: this.delta,
       result: over ? this.result : null,
     };
