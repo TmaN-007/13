@@ -563,7 +563,9 @@ input { font: inherit; color: inherit; }
   max-width: 60%;
 }
 .center-note .big { display: block; font-family: var(--display); font-weight: 700; font-size: clamp(18px, 2.4vw, 26px); color: var(--ink); margin-bottom: 4px; }
-.center-note .tribute-card { display: inline-block; margin: 10px 0 2px; --cw: 60px; }
+.center-note .tribute-line { display: block; font-size: 13.5px; color: var(--ink-dim); margin-bottom: 6px; }
+.center-note .tribute-card { display: block; width: max-content; margin: 2px auto 12px; }
+.center-note .tribute-card .card { --cw: 56px; box-shadow: 0 0 0 2px var(--brass-2), 0 10px 24px -8px #000; transform: rotate(-4deg); }
 .stamp {
   position: absolute; left: 50%; top: 46%;
   z-index: 20;

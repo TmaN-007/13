@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyze, canBeat, findInstantWin, legalPlays, isChop, chopValue } from '../shared/rules.js';
+import { analyze, canBeat, findInstantWin, legalPlays, isChop, chopValue, rankOf } from '../shared/rules.js';
 import { Game } from '../server/game.js';
 import { chooseMove } from '../server/bot.js';
 
@@ -93,23 +93,44 @@ test('bots can play full hands to completion, points sum to zero', () => {
   }
 });
 
-test('first lead must include lowest card; tribute moves best card', () => {
+test('first lead must include lowest card', () => {
   const players = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }, { id: 'd', name: 'D' }];
   const g = new Game(players, { instantWin: false });
   assert.equal(g.hands[g.turn][0], 0, '3♠ holder leads with 4 players');
   const other = g.hands[g.turn].find((x) => x !== 0);
   assert.equal(g.play(g.turn, [other]).ok, false);
+});
 
-  const g2 = new Game(players, { tribute: true, instantWin: false }, { handNo: 2, prevWinner: 'a', prevLoser: 'd' });
-  assert.equal(g2.phase, 'tribute');
-  assert.equal(g2.hands.a.length, 14);
-  assert.equal(g2.hands.d.length, 12);
-  assert.ok(g2.hands.a.includes(g2.tribute.given));
-  const back = g2.hands.a[0];
-  assert.ok(g2.returnTribute('a', back).ok);
-  assert.equal(g2.hands.a.length, 13);
-  assert.ok(g2.hands.d.includes(back));
-  assert.equal(g2.turn, 'a', 'winner leads');
+test('tribute: loser pays their highest 2 and leads; no 2 means the winner leads', () => {
+  const players = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }, { id: 'd', name: 'D' }];
+  let paid = 0, unpaid = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    let x = seed;
+    const rng = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const g = new Game(players, { tribute: true, instantWin: false }, { handNo: 2, prevWinner: 'a', prevLoser: 'd', rng });
+    assert.equal(g.phase, 'playing', 'no waiting phase');
+    assert.equal(g.mustInclude, null);
+    const t = g.tribute;
+    if (t.given != null) {
+      paid++;
+      assert.equal(rankOf(t.given), 12, 'a 2 is paid');
+      assert.equal(g.hands.a.length, 14);
+      assert.equal(g.hands.d.length, 12);
+      assert.ok(g.hands.a.includes(t.given));
+      assert.ok(g.hands.d.every((c) => c < t.given || rankOf(c) !== 12), 'it was their highest 2');
+      assert.equal(g.turn, 'd', 'loser leads after paying');
+    } else {
+      unpaid++;
+      assert.ok(g.hands.d.every((c) => rankOf(c) !== 12), 'loser really had no 2');
+      assert.equal(g.hands.a.length, 13);
+      assert.equal(g.hands.d.length, 13);
+      assert.equal(g.turn, 'a', 'winner leads when no 2 was paid');
+    }
+  }
+  assert.ok(paid > 0 && unpaid > 0, 'both branches exercised');
+  const off = new Game(players, { tribute: false, instantWin: false }, { handNo: 2, prevWinner: 'a', prevLoser: 'd' });
+  assert.equal(off.tribute, null);
+  assert.equal(off.turn, 'a', 'tribute off: winner leads as before');
 });
 
 test('last player at the table wins when everyone else leaves', async () => {

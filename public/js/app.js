@@ -192,8 +192,8 @@ function render(prev, fx, origins) {
 
 // ================================================================= LOBBY
 const SETTINGS = [
-  { k: 'tribute', t: 'Tribute', vi: 'cống', d: 'Last place gives their highest card to the winner, who gives any card back.' },
-  { k: 'winnerLeads', t: 'Winner leads', d: 'After hand one, the last winner leads. Off: the lowest card always leads.' },
+  { k: 'tribute', t: 'Tribute', vi: 'cống', d: 'Last place gives the winner their highest 2 and leads. No 2? The winner leads.' },
+  { k: 'winnerLeads', t: 'Winner leads', d: 'After hand one, the last winner leads (tribute can hand the lead to the loser). Off: the lowest card always leads.' },
   { k: 'firstLeadLowest', t: 'Open with the lowest card', d: 'Whoever leads with the lowest card (3♠) has to play it.' },
   { k: 'instantWin', t: 'Instant wins', vi: 'tới trắng', d: 'Four 2s, a dragon, six pairs or five consecutive pairs win on the deal.' },
   { k: 'chopPenalty', t: 'Chop penalties', vi: 'chặt heo', d: 'Getting your 2s or bombs chopped costs you points.' },
@@ -293,16 +293,14 @@ function seatStatus(id) {
   if (place >= 0 && (g.phase !== 'over' || g.counts[id] === 0)) return `<span class="chip place">${ordinal(place + 1)}</span>`;
   if (g.phase === 'over' && place >= 0) return `<span class="chip">${ordinal(place + 1)}</span>`;
   if (g.trick.passed.includes(id)) return '<span class="chip passed">Passed</span>';
-  if (g.phase === 'tribute' && g.tribute.to === id) return '<span class="chip">Choosing…</span>';
   if (g.turn === id) return '<span class="chip" style="color:var(--brass-2)">Thinking…</span>';
   return '';
 }
 
 function ringHTML(id) {
   const g = S.game;
-  const actor = g.phase === 'tribute' ? g.tribute?.to : g.turn;
-  if (actor !== id || !S.deadline) return '';
-  const total = Math.max(S.settings.turnSeconds || 20, g.phase === 'tribute' ? 20 : 0) * 1000;
+  if (g.turn !== id || !S.deadline) return '';
+  const total = (S.settings.turnSeconds || 20) * 1000;
   const left = Math.max(0, S.deadline - now());
   return `<svg class="ring run" viewBox="0 0 48 48" style="--d:${total}"><circle cx="24" cy="24" r="22" style="animation-duration:${total}ms;animation-delay:${left - total}ms"/></svg>`;
 }
@@ -325,7 +323,7 @@ function renderSeats() {
       seatEls.set(id, el);
     }
     const p = player(id) || { id, name: '—' };
-    const actor = g.phase === 'tribute' ? g.tribute?.to : g.turn;
+    const actor = g.turn;
     const count = g.counts[id];
     el.className = `seat pos-${pos[i]}${actor === id ? ' turn' : ''}${g.finished.includes(id) || g.frozen.includes(id) ? ' done' : ''}`;
     const sub = p.isBot ? 'bot' : p.left ? 'left' : !p.connected ? 'away' : `${fmtPts(p.score)} pts`;
@@ -436,17 +434,26 @@ function renderPile(prev, fx, origins) {
   // center note when the pile is empty
   const note = $('#centerNote');
   let html = '';
-  if (g.phase === 'tribute') {
-    const t = g.tribute;
-    if (t.to === S.me) html = `<span class="big">Tribute!</span>${esc(nameOf(t.from))} paid you their best card${t.given != null ? `<br><span class="tribute-card">${cardEl(t.given).outerHTML}</span>` : ''}<br>Pick a card to hand back.`;
-    else if (t.from === S.me) html = `<span class="big">You pay tribute</span>Your best card goes to ${esc(nameOf(t.to))}${t.given != null ? `<br><span class="tribute-card">${cardEl(t.given).outerHTML}</span>` : ''}<br>Waiting for a card back…`;
-    else html = `<span class="big">Tribute</span>${esc(nameOf(t.from))} pays ${esc(nameOf(t.to))} their best card.`;
-  } else if (g.phase === 'playing' && !plays.length && !trickEnded) {
+  if (g.phase === 'playing' && !plays.length && !trickEnded) {
     if (g.turn === S.me) html = `<span class="big">Your lead</span>${g.mustInclude != null ? `Open with your ${cardTag(g.mustInclude)}.` : 'Play anything.'}`;
     else html = `<span class="big">${esc(nameOf(g.turn))} leads</span>`;
+    if (handJustStarted(g) && g.tribute) html = tributeNote(g.tribute) + html;
   }
   note.innerHTML = html;
   note.hidden = !html;
+}
+
+const handJustStarted = (g) => Object.values(g.played).every((n) => n === 0);
+
+/** Center-table explanation of the tribute at the start of a hand. */
+function tributeNote(t) {
+  const from = t.from === S.me ? 'You' : esc(nameOf(t.from));
+  const to = t.to === S.me ? 'you' : esc(nameOf(t.to));
+  if (t.given == null) {
+    return `<span class="tribute-line">${from} had no 2 to pay ${to} — so ${t.to === S.me ? 'you lead' : `${esc(nameOf(t.to))} leads`}.</span>`;
+  }
+  const their = t.from === S.me ? 'your' : 'their';
+  return `<span class="tribute-line">${from} paid ${to} ${their} highest 2</span><span class="tribute-card">${cardEl(t.given).outerHTML}</span>`;
 }
 
 function renderMe(fx) {
@@ -473,37 +480,34 @@ function renderMe(fx) {
   for (const [c, el] of handEls) {
     el.classList.toggle('sel', selected.has(c));
     el.classList.toggle('must', g.mustInclude === c && g.turn === S.me);
-    el.classList.toggle('gift', !!tr && !tr.done && tr.to === S.me && tr.given === c);
+    el.classList.toggle('gift', !!tr && tr.to === S.me && tr.given === c && handJustStarted(g));
     el.classList.toggle('hint', false);
   }
   layoutHand();
 
   const myTurn = g.phase === 'playing' && g.turn === S.me;
-  const myTribute = g.phase === 'tribute' && tr?.to === S.me;
-  handBox.classList.toggle('idle', !myTurn && !myTribute);
+  handBox.classList.toggle('idle', !myTurn);
 
   // ---- status line
   const status = $('#statusLine');
   const target = g.trick.plays.at(-1);
   let txt = '';
   if (g.phase === 'over') txt = 'Hand over.';
-  else if (myTribute) txt = '<b>Choose a card to give back.</b>';
-  else if (g.phase === 'tribute') txt = 'Tribute is being paid…';
   else if (g.finished.includes(S.me)) txt = `You're out — <b>${ordinal(g.finished.indexOf(S.me) + 1)} place</b>. Watch the rest play out.`;
   else if (g.frozen.includes(S.me)) txt = "You're frozen (cóng) — someone went out before you played.";
   else if (myTurn) txt = target ? `<b>Your turn.</b> Beat ${esc(nameOf(target.by))}'s ${esc(target.label)} — or pass.` : '<b>Your lead.</b> Play anything.';
   else if (g.trick.passed.includes(S.me)) txt = `You passed — waiting for this round to end.`;
   else txt = `Waiting for <b>${esc(nameOf(g.turn))}</b>…`;
   status.innerHTML = txt;
-  status.classList.toggle('mine', myTurn || myTribute);
+  status.classList.toggle('mine', myTurn);
 
   // ---- timer bar
   const bar = $('#timerBar');
-  const mine = (myTurn || myTribute) && S.deadline;
+  const mine = myTurn && S.deadline;
   bar.classList.toggle('on', !!mine);
   const i = bar.querySelector('i');
   if (mine) {
-    const total = Math.max(S.settings.turnSeconds || 20, myTribute ? 20 : 0) * 1000;
+    const total = (S.settings.turnSeconds || 20) * 1000;
     const left = Math.max(0, S.deadline - now());
     const k = `${S.deadline}`;
     if (i.dataset.k !== k) {
@@ -536,17 +540,6 @@ function updateActions() {
   const passBtn = $('#passBtn');
   const lbl = $('#playLabel');
   const sel = [...selected].sort((a, b) => a - b);
-  const myTribute = g.phase === 'tribute' && g.tribute?.to === S.me;
-
-  if (myTribute) {
-    playBtn.firstElementChild.textContent = 'Give back';
-    playBtn.disabled = sel.length !== 1;
-    lbl.innerHTML = sel.length === 1 ? cardTag(sel[0]).replace(/#ff8a7a/, '#7a1a12') : 'select one card';
-    passBtn.disabled = true;
-    $('#hintBtn').disabled = true;
-    return;
-  }
-  playBtn.firstElementChild.textContent = 'Play';
   const myTurn = g.phase === 'playing' && g.turn === S.me;
   const target = g.trick.plays.at(-1);
   passBtn.disabled = !myTurn || !target;
@@ -587,8 +580,6 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => { drag = null; });
 
 function setSel(id, on) {
-  const g = S?.game;
-  if (g?.phase === 'tribute' && g.tribute?.to === S.me && on) selected.clear();
   if (on) selected.add(id); else selected.delete(id);
   for (const [c, el] of handEls) { el.classList.toggle('sel', selected.has(c)); el.classList.remove('hint'); }
   sfx.select();
@@ -605,11 +596,6 @@ async function doPlay() {
   const g = S?.game;
   if (!g || $('#playBtn').disabled) return;
   const cards = [...selected];
-  if (g.phase === 'tribute') {
-    const res = await emit('tribute', cards[0]);
-    if (res.ok) selected.clear();
-    return;
-  }
   const res = await emit('play', cards);
   if (res.ok) { selected.clear(); hints = []; hintIdx = -1; }
 }
@@ -703,12 +689,13 @@ function handleFx(prev, fx) {
         toast(f.id === S.me ? 'Everyone else left — <b>you win the hand!</b>' : `Everyone else left — <b>${esc(nameOf(f.id))}</b> wins.`, '', 4000);
         break;
       case 'instant': toast(`<b>${esc(nameOf(f.id))}</b> wins on the deal — ${esc(f.reason)}!`, '', 4000); break;
-      case 'tributeAsk':
-        if (f.to === S.me) toast(`${esc(nameOf(f.from))} owes you tribute.`);
-        else if (f.from === S.me) toast(`You finished last — tribute goes to ${esc(nameOf(f.to))}.`, 'err');
-        break;
       case 'tribute':
-        if (f.from === S.me && f.returned != null) toast(`${esc(nameOf(f.to))} handed you back the ${cardTag(f.returned)}`);
+        if (f.given != null) {
+          if (f.from === S.me) toast(`You lost last hand — your ${cardTag(f.given)} goes to ${esc(nameOf(f.to))}. <b>You lead.</b>`, 'err', 4200);
+          else if (f.to === S.me) toast(`${esc(nameOf(f.from))} paid you their ${cardTag(f.given)} — they lead.`, '', 4200);
+          else toast(`${esc(nameOf(f.from))} paid ${esc(nameOf(f.to))} their ${cardTag(f.given)}.`, '', 3500);
+        } else if (f.from === S.me) toast(`No 2 to pay — ${esc(nameOf(f.to))} leads.`, '', 3500);
+        else if (f.to === S.me) toast(`${esc(nameOf(f.from))} had no 2 to pay — <b>you lead.</b>`, '', 3500);
         break;
       case 'over':
         if (f.placings[0] === S.me) sfx.win(); else sfx.out();

@@ -4,7 +4,7 @@ import {
 } from '../shared/rules.js';
 
 export const DEFAULT_SETTINGS = {
-  tribute: true,          // loser hands their best card to the winner, winner hands one back
+  tribute: true,          // loser gives their highest 2 to the winner and leads; no 2 = winner leads
   winnerLeads: true,      // after hand 1 the previous winner leads; otherwise lowest card leads
   firstLeadLowest: true,  // the opening play of a lowest-card lead must include that card (3♠)
   instantWin: true,       // "tới trắng": four 2s, dragon, six pairs, five consecutive pairs
@@ -49,14 +49,15 @@ export class Game {
     const deck = shuffle(newDeck(), this.rng);
     this.order.forEach((id, i) => { this.hands[id] = sortCards(deck.slice(i * 13, i * 13 + 13)); });
     const s = this.settings;
+    // Tribute (cống): last hand's loser must hand their highest 2 to last hand's winner.
+    // Paid a 2 -> the loser leads. Had no 2 -> the winner leads.
     if (s.tribute && this.prevWinner && this.prevLoser && this.prevWinner !== this.prevLoser) {
-      const best = this.hands[this.prevLoser].at(-1);
-      this.move(this.prevLoser, this.prevWinner, best);
-      this.phase = 'tribute';
-      this.tribute = { from: this.prevLoser, to: this.prevWinner, given: best, returned: null };
-      return;
+      const twos = this.hands[this.prevLoser].filter((c) => rankOf(c) === TWO);
+      const given = twos.length ? twos.at(-1) : null;
+      if (given != null) this.move(this.prevLoser, this.prevWinner, given);
+      this.tribute = { from: this.prevLoser, to: this.prevWinner, given };
     }
-    this.begin();
+    this.openingFx = this.begin();
   }
 
   move(from, to, card) {
@@ -64,39 +65,37 @@ export class Game {
     this.hands[to] = sortCards([...this.hands[to], card]);
   }
 
-  /** The winner hands one card back to the loser. */
-  returnTribute(id, card) {
-    if (this.phase !== 'tribute' || id !== this.tribute.to) return { ok: false, error: 'Not your tribute to give.' };
-    if (!this.hands[id].includes(card)) return { ok: false, error: "You don't have that card." };
-    this.move(id, this.tribute.from, card);
-    this.tribute.returned = card;
-    return { ok: true, fx: [{ type: 'tribute', from: this.tribute.from, to: id, ...this.tribute }, ...this.begin()] };
-  }
-
   begin() {
     this.phase = 'playing';
-    const fx = [];
-    if (this.settings.instantWin) {
-      for (const id of this.order) {
-        const why = findInstantWin(this.hands[id]);
-        if (why) {
-          this.finishInstant(id, why);
-          return [{ type: 'instant', id, reason: why }];
-        }
-      }
-    }
     const lowestHolder = () => {
       let best = null;
       for (const id of this.order) if (best == null || this.hands[id][0] < this.hands[best][0]) best = id;
       return best;
     };
-    if (this.handNo > 1 && this.settings.winnerLeads && this.prevWinner) {
-      this.turn = this.prevWinner;
+    let leader;
+    let must = null;
+    if (this.tribute) {
+      leader = this.tribute.given != null ? this.tribute.from : this.tribute.to;
+    } else if (this.handNo > 1 && this.settings.winnerLeads && this.prevWinner) {
+      leader = this.prevWinner;
     } else {
-      this.turn = lowestHolder();
-      if (this.settings.firstLeadLowest) this.mustInclude = this.hands[this.turn][0];
+      leader = lowestHolder();
+      if (this.settings.firstLeadLowest) must = this.hands[leader][0];
     }
-    fx.push({ type: 'start', id: this.turn, mustInclude: this.mustInclude });
+    const fx = this.tribute ? [{ type: 'tribute', ...this.tribute, leader }] : [];
+
+    if (this.settings.instantWin) {
+      for (const id of this.order) {
+        const why = findInstantWin(this.hands[id]);
+        if (why) {
+          this.finishInstant(id, why);
+          return [...fx, { type: 'instant', id, reason: why }];
+        }
+      }
+    }
+    this.turn = leader;
+    this.mustInclude = must;
+    fx.push({ type: 'start', id: leader, mustInclude: must });
     return fx;
   }
 
@@ -257,7 +256,6 @@ export class Game {
 
   /** Auto move on timeout / for absent players: pass if possible, else lead the lowest card. */
   autoMove(id) {
-    if (this.phase === 'tribute' && id === this.tribute?.to) return this.returnTribute(id, this.hands[id][0]);
     if (this.phase !== 'playing' || id !== this.turn) return { ok: false };
     if (this.target) return this.pass(id);
     return this.play(id, [this.mustInclude ?? this.hands[id][0]]);
@@ -281,12 +279,8 @@ export class Game {
       },
       finished: this.finished,
       frozen: this.frozen,
-      tribute: this.tribute && {
-        from: this.tribute.from, to: this.tribute.to,
-        given: this.tribute.to === viewer || this.tribute.from === viewer || over ? this.tribute.given : null,
-        returned: this.tribute.returned != null && (this.tribute.from === viewer || this.tribute.to === viewer) ? this.tribute.returned : null,
-        done: this.tribute.returned != null,
-      },
+      // The hand-over happens in the open at a real table, so everyone sees which 2 moved.
+      tribute: this.tribute && { ...this.tribute },
       delta: this.delta,
       result: over ? this.result : null,
     };
